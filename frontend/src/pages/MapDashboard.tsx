@@ -1,16 +1,49 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
 import { MapContainer, TileLayer, Marker, Popup, Polygon } from "react-leaflet";
 import { Layers, Search, BarChart3 } from "lucide-react";
 
+type Parcel = {
+  id: number;
+  district: string;
+  municipality: string;
+  sheet: string;
+  plan: string;
+  parcel_number: string;
+  registration_number: string;
+  area_m2: string;
+  planning_zone: string;
+  building_density: string | null;
+  coverage_ratio: string | null;
+  floors: number | null;
+  height_m: string | null;
+  geometry_json: {
+    type: "Polygon";
+    coordinates: number[][][];
+  };
+};
+
 const cyprusCenter: [number, number] = [35.1264, 33.4299];
 
-const testParcel: [number, number][] = [
-  [35.1705, 33.3601],
-  [35.1712, 33.3635],
-  [35.1688, 33.365],
-  [35.1679, 33.3615],
-];
+function geoJsonToLeafletPolygon(parcel: Parcel): [number, number][] {
+  return parcel.geometry_json.coordinates[0].map(([lng, lat]) => [lat, lng]);
+}
 
 export default function MapDashboard() {
+  const [parcels, setParcels] = useState<Parcel[]>([]);
+  const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
+
+  useEffect(() => {
+    axios
+      .get("http://127.0.0.1:8000/api/gis/parcels/")
+      .then((res) => {
+        setParcels(res.data);
+      })
+      .catch((err) => {
+        console.error("Failed to load parcels:", err);
+      });
+  }, []);
+
   return (
     <div className="h-screen w-screen bg-slate-950 text-white flex flex-col">
       <div className="h-16 border-b border-slate-800 bg-slate-900 flex items-center px-4 gap-4">
@@ -72,50 +105,89 @@ export default function MapDashboard() {
               <Popup>Cyprus market intelligence center</Popup>
             </Marker>
 
-            <Polygon
-              positions={testParcel}
-              pathOptions={{ color: "blue", fillOpacity: 0.25 }}
-            >
-              <Popup>
-                <strong>Test Parcel</strong>
-                <br />
-                Area: 620 m²
-                <br />
-                Zone: Κα6
-                <br />
-                Density: 90%
-              </Popup>
-            </Polygon>
+            {parcels.map((parcel) => (
+              <Polygon
+                key={parcel.id}
+                positions={geoJsonToLeafletPolygon(parcel)}
+                pathOptions={{
+                  color: selectedParcel?.id === parcel.id ? "red" : "blue",
+                  fillOpacity: 0.25,
+                }}
+                eventHandlers={{
+                  click: () => setSelectedParcel(parcel),
+                }}
+              >
+                <Popup>
+                  <strong>Parcel {parcel.parcel_number}</strong>
+                  <br />
+                  {parcel.municipality}, {parcel.district}
+                  <br />
+                  Area: {parcel.area_m2} m²
+                  <br />
+                  Zone: {parcel.planning_zone}
+                </Popup>
+              </Polygon>
+            ))}
           </MapContainer>
         </main>
 
         <aside className="w-80 bg-slate-900 border-l border-slate-800 p-4 overflow-y-auto">
           <div className="flex items-center gap-2 mb-4">
             <BarChart3 size={18} />
-            <h2 className="font-semibold">Area Intelligence</h2>
+            <h2 className="font-semibold">Parcel Intelligence</h2>
           </div>
 
-          <div className="space-y-3">
-            <div className="bg-slate-800 rounded-xl p-4">
-              <p className="text-sm text-slate-400">Average Sale Price</p>
-              <p className="text-2xl font-bold">€2,450/m²</p>
-            </div>
+          {selectedParcel ? (
+            <div className="space-y-3">
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-sm text-slate-400">Parcel</p>
+                <p className="text-2xl font-bold">
+                  {selectedParcel.parcel_number}
+                </p>
+              </div>
 
-            <div className="bg-slate-800 rounded-xl p-4">
-              <p className="text-sm text-slate-400">Rental Yield</p>
-              <p className="text-2xl font-bold">5.8%</p>
-            </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-sm text-slate-400">Location</p>
+                <p className="text-lg font-bold">
+                  {selectedParcel.municipality}, {selectedParcel.district}
+                </p>
+              </div>
 
-            <div className="bg-slate-800 rounded-xl p-4">
-              <p className="text-sm text-slate-400">Nearby Comparables</p>
-              <p className="text-2xl font-bold">24</p>
-            </div>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-sm text-slate-400">Area</p>
+                <p className="text-2xl font-bold">
+                  {selectedParcel.area_m2} m²
+                </p>
+              </div>
 
-            <div className="bg-slate-800 rounded-xl p-4">
-              <p className="text-sm text-slate-400">Valuation Range</p>
-              <p className="text-xl font-bold">€310k - €365k</p>
+              <div className="bg-slate-800 rounded-xl p-4">
+                <p className="text-sm text-slate-400">Planning Zone</p>
+                <p className="text-2xl font-bold">
+                  {selectedParcel.planning_zone}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-800 rounded-xl p-4">
+                  <p className="text-sm text-slate-400">Density</p>
+                  <p className="text-xl font-bold">
+                    {selectedParcel.building_density}%
+                  </p>
+                </div>
+
+                <div className="bg-slate-800 rounded-xl p-4">
+                  <p className="text-sm text-slate-400">Coverage</p>
+                  <p className="text-xl font-bold">
+                    {selectedParcel.coverage_ratio}%
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-slate-800 rounded-xl p-4 text-sm text-slate-300">
+              Click a parcel on the map to view intelligence.
+            </div>
+          )}
         </aside>
       </div>
     </div>
